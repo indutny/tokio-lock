@@ -1,3 +1,8 @@
+//! # tokio-lock
+//!
+//! Access an object from a single Tokio task.
+//!
+
 extern crate futures;
 extern crate tokio;
 
@@ -9,10 +14,51 @@ use std::any::Any;
 use std::error::Error as StdError;
 use tokio::sync::{mpsc, oneshot};
 
+/// Possible error values
 pub use error::Error;
 
 type AnyBox = Box<Any + Send + 'static>;
 
+/// This structure "locks" an object to be accessed from a single Tokio task.
+///
+/// Usage:
+/// ```rust
+/// extern crate futures;
+/// extern crate tokio;
+/// extern crate tokio_lock;
+///
+/// use futures::prelude::*;
+/// use futures::future::{self, FutureResult};
+///
+/// use tokio_lock::{Lock, Error};
+///
+/// // Create a Lock instance
+/// let mut lock = Lock::new();
+///
+/// struct TestObject {
+///   field: u32,
+/// }
+///
+/// // Create a future that is going to manage the `TestObject` instance.
+/// // NOTE: Object is consumed in the process.
+/// let manage = lock.manage(TestObject { field: 42 });
+///
+/// // Borrow an object from `lock` and execute given closure.
+/// let get_field = lock.get(|obj| -> FutureResult<u32, Error> {
+///     future::ok(obj.field)
+/// }).map(move |field| {
+///     assert_eq!(field, 42);
+///
+///     // Stop managing the object
+///     // NOTE: This may not be needed in the most of the cases.
+///     lock.stop();
+/// });
+///
+/// // NOTE: `manage` is a future and has to be run
+/// tokio::run(manage.join(get_field).map_err(|err| {
+///     panic!("Got error");
+/// }).map(|_| ()));
+/// ```
 pub struct Lock<T, E>
 where
     E: StdError + From<Error> + Send + 'static,
@@ -40,11 +86,13 @@ impl<T, E> Lock<T, E>
 where
     E: StdError + From<Error> + Send + 'static,
 {
+    /// Create new instance of a `Lock`.
     pub fn new() -> Self {
         Self { tx: None }
     }
 
-    pub fn run(&mut self, mut value: T) -> impl Future<Item = (), Error = Error> {
+    /// Consume `value` and return a `Future` for managing it.
+    pub fn manage(&mut self, mut value: T) -> impl Future<Item = (), Error = Error> {
         let (tx, rx) = mpsc::unbounded_channel();
 
         self.tx = Some(tx);
@@ -87,6 +135,7 @@ where
         Box::new(res_rx.from_err::<Error>().from_err().and_then(|res| res))
     }
 
+    /// Get the managed object and invoke `cb` with a reference to it.
     pub fn get<CB, F, I>(&mut self, mut cb: CB) -> impl Future<Item = I, Error = E>
     where
         CB: (FnMut(&T) -> F) + Send + 'static,
@@ -100,6 +149,7 @@ where
             .map(|res| -> I { *res.downcast::<I>().unwrap() })
     }
 
+    /// Get the managed object and invoke `cb` with a mutable reference to it.
     pub fn get_mut<I, CB, F>(&mut self, mut cb: CB) -> impl Future<Item = I, Error = E>
     where
         CB: (FnMut(&mut T) -> F) + Send + 'static,
@@ -113,6 +163,7 @@ where
             .map(|res| -> I { *res.downcast::<I>().unwrap() })
     }
 
+    /// Stop managing the object.
     pub fn stop(&mut self) {
         self.tx = None;
     }
@@ -142,7 +193,7 @@ mod tests {
         let o = TestObject { x: 23, y: 42 };
 
         let mut l = Lock::new();
-        let poll = l.run(o).map_err(|err| {
+        let poll = l.manage(o).map_err(|err| {
             panic!("Got error {}", err);
         });
 
