@@ -88,18 +88,24 @@ where
         Box::new(res_rx.from_err::<Error>().from_err().and_then(|res| res))
     }
 
-    pub fn get(
+    pub fn get<F>(
         &mut self,
-        f: Box<(FnMut(&T) -> Box<Future<Item = I, Error = E> + Send>) + Send>,
-    ) -> Box<Future<Item = I, Error = E> + Send> {
-        self.run_closure(Closure::Read(f))
+        f: F,
+    ) -> Box<Future<Item = I, Error = E> + Send>
+        where
+        F: (FnMut(&T) -> Box<Future<Item = I, Error = E> + Send>) + Send + 'static,
+    {
+        self.run_closure(Closure::Read(Box::new(f)))
     }
 
-    pub fn get_mut(
+    pub fn get_mut<F>(
         &mut self,
-        f: Box<(FnMut(&mut T) -> Box<Future<Item = I, Error = E> + Send>) + Send>,
-    ) -> Box<Future<Item = I, Error = E> + Send> {
-        self.run_closure(Closure::Write(f))
+        f: F
+    ) -> Box<Future<Item = I, Error = E> + Send>
+        where
+        F: (FnMut(&mut T) -> Box<Future<Item = I, Error = E> + Send>) + Send + 'static,
+    {
+        self.run_closure(Closure::Write(Box::new(f)))
     }
 
     pub fn stop(&mut self) {
@@ -134,11 +140,10 @@ mod tests {
             panic!("Got error {}", err);
         });
 
-        let f = |o: &TestObject| -> Box<Future<Item = u32, Error = Error> + Send> {
-            Box::new(future::ok(o.x))
-        };
         let get = l
-            .get(Box::new(f))
+            .get(|o: &TestObject| -> Box<Future<Item = u32, Error = Error> + Send> {
+                Box::new(future::ok(o.x))
+            })
             .map_err(|err| {
                 panic!("Got error {}", err);
             })
