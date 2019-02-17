@@ -489,7 +489,7 @@ dependencies = [
 
 [[package]]
 name = "tokio-lock"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
