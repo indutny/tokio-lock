@@ -14,19 +14,19 @@ pub enum Error {
 
 impl StdError for Error {
     fn description(&self) -> &str {
-        "TODO(indutny): implement me"
+        match self {
+            Error::NotRunning => "run() must be called first",
+            Error::MPSCRecv => "mpsc recieve failed",
+            Error::MPSCTrySend => "mpsc `try_send()` failed",
+            Error::OneShotRecv => "oneshot receive failed",
+            Error::OneShotSend => "oneshot `send()` failed",
+        }
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::NotRunning => write!(f, "run() must be called first"),
-            Error::MPSCRecv => write!(f, "MPSCRecv"),
-            Error::MPSCTrySend => write!(f, "MPSCTrySend"),
-            Error::OneShotRecv => write!(f, "OneShotRecv"),
-            Error::OneShotSend => write!(f, "OneShotSend"),
-        }
+        write!(f, "{}", self.description())
     }
 }
 
