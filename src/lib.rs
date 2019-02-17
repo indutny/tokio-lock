@@ -5,40 +5,39 @@ mod error;
 
 use futures::prelude::*;
 use futures::{future, Future};
+use std::any::Any;
 use std::error::Error as StdError;
 use tokio::sync::{mpsc, oneshot};
 
 pub use error::Error;
 
-pub struct Lock<T, I, E>
+type AnyBox = Box<Any + Send + 'static>;
+
+pub struct Lock<T, E>
 where
-    I: Send + 'static,
     E: StdError + From<Error> + Send + 'static,
 {
-    tx: Option<mpsc::UnboundedSender<Acquire<T, I, E>>>,
+    tx: Option<mpsc::UnboundedSender<Acquire<T, E>>>,
 }
 
-enum Closure<T, I, E>
+enum Closure<T, E>
 where
-    I: Send + 'static,
     E: StdError + From<Error> + Send + 'static,
 {
-    Read(Box<(FnMut(&T) -> Box<Future<Item = I, Error = E> + Send>) + Send>),
-    Write(Box<(FnMut(&mut T) -> Box<Future<Item = I, Error = E> + Send>) + Send>),
+    Read(Box<(FnMut(&T) -> Box<Future<Item = AnyBox, Error = E> + Send>) + Send>),
+    Write(Box<(FnMut(&mut T) -> Box<Future<Item = AnyBox, Error = E> + Send>) + Send>),
 }
 
-struct Acquire<T, I, E>
+struct Acquire<T, E>
 where
-    I: Send + 'static,
     E: StdError + From<Error> + Send + 'static,
 {
-    tx: oneshot::Sender<Result<I, E>>,
-    closure: Closure<T, I, E>,
+    tx: oneshot::Sender<Result<AnyBox, E>>,
+    closure: Closure<T, E>,
 }
 
-impl<T, I, E> Lock<T, I, E>
+impl<T, E> Lock<T, E>
 where
-    I: Send + 'static,
     E: StdError + From<Error> + Send + 'static,
 {
     pub fn new() -> Self {
@@ -66,8 +65,8 @@ where
 
     fn run_closure(
         &mut self,
-        closure: Closure<T, I, E>,
-    ) -> Box<Future<Item = I, Error = E> + Send> {
+        closure: Closure<T, E>,
+    ) -> Box<Future<Item = AnyBox, Error = E> + Send> {
         let tx = match &mut self.tx {
             Some(tx) => tx,
             None => {
@@ -88,20 +87,30 @@ where
         Box::new(res_rx.from_err::<Error>().from_err().and_then(|res| res))
     }
 
-    pub fn get<CB, F>(&mut self, mut cb: CB) -> Box<Future<Item = I, Error = E> + Send>
+    pub fn get<CB, F, I>(&mut self, mut cb: CB) -> impl Future<Item = I, Error = E>
     where
         CB: (FnMut(&T) -> F) + Send + 'static,
         F: Future<Item = I, Error = E> + Send + 'static,
+        I: Send + 'static,
     {
-        self.run_closure(Closure::Read(Box::new(move |t| Box::new(cb(t)))))
+        let closure = Closure::Read(Box::new(move |t| {
+            Box::new(cb(t).map(|t| -> AnyBox { Box::new(t) }))
+        }));
+        self.run_closure(closure)
+            .map(|res| -> I { *res.downcast::<I>().unwrap() })
     }
 
-    pub fn get_mut<CB, F>(&mut self, mut cb: CB) -> Box<Future<Item = I, Error = E> + Send>
+    pub fn get_mut<I, CB, F>(&mut self, mut cb: CB) -> impl Future<Item = I, Error = E>
     where
         CB: (FnMut(&mut T) -> F) + Send + 'static,
         F: Future<Item = I, Error = E> + Send + 'static,
+        I: Send + 'static,
     {
-        self.run_closure(Closure::Write(Box::new(move |t| Box::new(cb(t)))))
+        let closure = Closure::Write(Box::new(move |t| {
+            Box::new(cb(t).map(|t| -> AnyBox { Box::new(t) }))
+        }));
+        self.run_closure(closure)
+            .map(|res| -> I { *res.downcast::<I>().unwrap() })
     }
 
     pub fn stop(&mut self) {
@@ -109,9 +118,8 @@ where
     }
 }
 
-impl<T, I, E> Default for Lock<T, I, E>
+impl<T, E> Default for Lock<T, E>
 where
-    I: Send + 'static,
     E: StdError + From<Error> + Send + 'static,
 {
     fn default() -> Self {
