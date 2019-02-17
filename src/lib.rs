@@ -138,7 +138,7 @@ mod tests {
         });
 
         let get = l
-            .get(|o: &TestObject| -> FutureResult<u32, Error> { future::ok(o.x) })
+            .get(|o| -> FutureResult<u32, Error> { future::ok(o.x) })
             .map_err(|err| {
                 panic!("Got error {}", err);
             })
