@@ -178,6 +178,17 @@ where
     }
 }
 
+impl<T, E> Clone for Lock<T, E>
+where
+    E: StdError + From<Error> + Send + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            tx: self.tx.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,7 +209,9 @@ mod tests {
         });
 
         let get_x = l.get(|o| -> FutureResult<u32, Error> { future::ok(o.x) });
-        let get_y = l.get(|o| -> FutureResult<u64, Error> { future::ok(o.y) });
+        let get_y = l
+            .clone()
+            .get(|o| -> FutureResult<u64, Error> { future::ok(o.y) });
 
         let get = get_x
             .join(get_y)
