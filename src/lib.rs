@@ -2,6 +2,45 @@
 //!
 //! Access an object from a single Tokio task.
 //!
+//!
+//! Usage:
+//! ```rust
+//! extern crate futures;
+//! extern crate tokio;
+//! extern crate tokio_lock;
+//!
+//! use futures::prelude::*;
+//! use futures::future::{self, FutureResult};
+//!
+//! use tokio_lock::{Lock, Error};
+//!
+//! // Create a Lock instance
+//! let mut lock = Lock::new();
+//!
+//! struct TestObject {
+//!   field: u32,
+//! }
+//!
+//! // Create a future that is going to manage the `TestObject` instance.
+//! // NOTE: Object is consumed in the process.
+//! let manage = lock.manage(TestObject { field: 42 });
+//!
+//! // Borrow an object from `lock` and execute given closure.
+//! let get_field = lock.get(|obj| -> FutureResult<u32, Error> {
+//!     future::ok(obj.field)
+//! }).map(move |field| {
+//!     assert_eq!(field, 42);
+//!
+//!     // Stop managing the object
+//!     // NOTE: This may not be needed in the most of the cases.
+//!     lock.stop();
+//! });
+//!
+//! // NOTE: `manage` is a future and has to be run
+//! tokio::run(manage.join(get_field).map_err(|err| {
+//!     panic!("Got error");
+//! }).map(|_| ()));
+//! ```
 
 extern crate futures;
 extern crate tokio;
@@ -20,45 +59,6 @@ pub use error::Error;
 type AnyBox = Box<Any + Send + 'static>;
 
 /// This structure "locks" an object to be accessed from a single Tokio task.
-///
-/// Usage:
-/// ```rust
-/// extern crate futures;
-/// extern crate tokio;
-/// extern crate tokio_lock;
-///
-/// use futures::prelude::*;
-/// use futures::future::{self, FutureResult};
-///
-/// use tokio_lock::{Lock, Error};
-///
-/// // Create a Lock instance
-/// let mut lock = Lock::new();
-///
-/// struct TestObject {
-///   field: u32,
-/// }
-///
-/// // Create a future that is going to manage the `TestObject` instance.
-/// // NOTE: Object is consumed in the process.
-/// let manage = lock.manage(TestObject { field: 42 });
-///
-/// // Borrow an object from `lock` and execute given closure.
-/// let get_field = lock.get(|obj| -> FutureResult<u32, Error> {
-///     future::ok(obj.field)
-/// }).map(move |field| {
-///     assert_eq!(field, 42);
-///
-///     // Stop managing the object
-///     // NOTE: This may not be needed in the most of the cases.
-///     lock.stop();
-/// });
-///
-/// // NOTE: `manage` is a future and has to be run
-/// tokio::run(manage.join(get_field).map_err(|err| {
-///     panic!("Got error");
-/// }).map(|_| ()));
-/// ```
 pub struct Lock<T, E>
 where
     E: StdError + From<Error> + Send + 'static,
