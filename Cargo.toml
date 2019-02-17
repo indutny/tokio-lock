@@ -1,0 +1,18 @@
+[package]
+name = "tokio-lock"
+description = "TBA"
+version = "0.1.0-dev"
+authors = ["Fedor Indutny <fedor@indutny.com>"]
+edition = "2018"
+exclude = [".travis.yml"]
+repository = "https://github.com/indutny/tokio-lock"
+readme = "README.md"
+license = "MIT"
+categories = ["asynchronous"]
+
+[dependencies]
+futures = "^0.1.25"
+tokio = "^0.1.15"
+
+[badges]
+travis-ci = { repository = "indutny/tokio-lock" }
