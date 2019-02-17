@@ -134,24 +134,28 @@ mod tests {
 
     struct TestObject {
         x: u32,
+        y: u64,
     }
 
     #[test]
     fn it_should_compute_digest_for_abc() {
-        let o = TestObject { x: 23 };
+        let o = TestObject { x: 23, y: 42 };
 
         let mut l = Lock::new();
         let poll = l.run(o).map_err(|err| {
             panic!("Got error {}", err);
         });
 
-        let get = l
-            .get(|o| -> FutureResult<u32, Error> { future::ok(o.x) })
+        let get_x = l.get(|o| -> FutureResult<u32, Error> { future::ok(o.x) });
+        let get_y = l.get(|o| -> FutureResult<u64, Error> { future::ok(o.y) });
+
+        let get = get_x
+            .join(get_y)
             .map_err(|err| {
                 panic!("Got error {}", err);
             })
             .map(move |val| {
-                assert_eq!(val, 23);
+                assert_eq!(val, (23, 42));
                 l.stop();
             });
 
