@@ -88,24 +88,20 @@ where
         Box::new(res_rx.from_err::<Error>().from_err().and_then(|res| res))
     }
 
-    pub fn get<F>(
-        &mut self,
-        f: F,
-    ) -> Box<Future<Item = I, Error = E> + Send>
-        where
-        F: (FnMut(&T) -> Box<Future<Item = I, Error = E> + Send>) + Send + 'static,
+    pub fn get<CB, F>(&mut self, mut cb: CB) -> Box<Future<Item = I, Error = E> + Send>
+    where
+        CB: (FnMut(&T) -> F) + Send + 'static,
+        F: Future<Item = I, Error = E> + Send + 'static,
     {
-        self.run_closure(Closure::Read(Box::new(f)))
+        self.run_closure(Closure::Read(Box::new(move |t| Box::new(cb(t)))))
     }
 
-    pub fn get_mut<F>(
-        &mut self,
-        f: F
-    ) -> Box<Future<Item = I, Error = E> + Send>
-        where
-        F: (FnMut(&mut T) -> Box<Future<Item = I, Error = E> + Send>) + Send + 'static,
+    pub fn get_mut<CB, F>(&mut self, mut cb: CB) -> Box<Future<Item = I, Error = E> + Send>
+    where
+        CB: (FnMut(&mut T) -> F) + Send + 'static,
+        F: Future<Item = I, Error = E> + Send + 'static,
     {
-        self.run_closure(Closure::Write(Box::new(f)))
+        self.run_closure(Closure::Write(Box::new(move |t| Box::new(cb(t)))))
     }
 
     pub fn stop(&mut self) {
@@ -126,6 +122,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::future::FutureResult;
 
     struct TestObject {
         x: u32,
@@ -141,9 +138,7 @@ mod tests {
         });
 
         let get = l
-            .get(|o: &TestObject| -> Box<Future<Item = u32, Error = Error> + Send> {
-                Box::new(future::ok(o.x))
-            })
+            .get(|o: &TestObject| -> FutureResult<u32, Error> { future::ok(o.x) })
             .map_err(|err| {
                 panic!("Got error {}", err);
             })
